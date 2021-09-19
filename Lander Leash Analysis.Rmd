@@ -1,0 +1,1203 @@
+---
+title: "Who Let the Dogs Out?"
+author: "Matthew Stone"
+date: '2021-08-06'
+slug: capstone-project
+tags: []
+categories: R
+output:
+  blogdown::html_page:
+    toc: true
+    fig_width: 6
+    dev: "svg"
+---
+
+[Link to Company Presentation](https://docs.google.com/presentation/d/1zSUk9L9T-ToPm5KXzBEbMzlY49bRqW4DnHoJrfhggo4/edit?usp=sharing)
+
+```{r, include=FALSE}
+library(tidyverse)
+library(fpp3)
+library(magrittr)
+library(scales)
+library(plotly)
+library(tidytext)
+library(kableExtra)
+
+
+# All Dates
+all_dates <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/All Dates.csv", skip = 7, head = FALSE, sep = ",")
+
+all_dates <- all_dates[c(1:732),]
+
+all_dates <- all_dates %>% rename(Day = V1, 
+                     Users = V2)
+
+
+
+# Cleaning commas
+all_dates$Users <- as.numeric(gsub(",","", all_dates$Users))
+all_dates$Day <- as_date(mdy(all_dates$Day))
+
+
+all_dates <- all_dates %>% 
+    as_tsibble(index = Day) 
+
+
+all_dates %>% autoplot() + ylim(0,1300)
+
+
+
+# User Date Import and Cleaning
+user_date <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master.csv", skip = 7, head = FALSE, sep = ",")
+
+
+
+user_date <- user_date %>% rename(Day = V1, 
+                     Segment = V3,
+                     Users = V4)
+
+user_date <- user_date %>% select(-V2)
+
+
+# Cleaning commas
+user_date$Users <- as.numeric(gsub(",","", user_date$Users))
+user_date$Segment <- as.factor(user_date$Segment)
+
+# Getting rid of NA at the end
+user_date <- user_date[-c(135:136),]
+
+
+# Pulling Users & creating index for join
+Users <- data.frame(User = user_date$Users)
+Users <- rowid_to_column(Users, "index")
+
+
+
+# Pulling dates & creating index for join
+user_date <- data.frame(Day = mdy(user_date$Day), 
+                        Segment = user_date$Segment)
+
+user_date <- rowid_to_column(user_date, "index")
+
+# Joining by index
+user_date <- full_join(user_date, Users, by = "index")
+
+user_date
+
+
+# Changing column names and dropping duplicate columns
+user_date <- user_date %>% select(-index)
+
+
+
+# Creating Tsibble
+user_date <- user_date %>% 
+    mutate(Day = as_date(Day)) %>%
+    as_tsibble(index = Day,
+               key = Segment) 
+
+
+
+
+
+user_date %>% filter(Segment == "All Users") %>% autoplot()
+
+user_date %>% filter(Segment == "Made a Purchase") %>% autoplot()
+
+
+# Importing & Cleaning 'Age Data'
+
+df_unknown <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Audience Unknown.csv", skip = 6, head = FALSE, sep = ",")
+
+
+# Unknown users Time Series Data
+
+# Creating Unknown User Dates
+unknown_dates <- df_unknown[c(7:73),c(1,2)]
+
+unknown_dates <- unknown_dates %>% rename(Date = V1,
+                         Users = V2)
+
+unknown_dates$Users <- as.numeric(gsub(",","", unknown_dates$Users)) 
+
+unknown_dates$Date <- as_date(mdy(unknown_dates$Date))
+
+
+unknown_dates <- unknown_dates %>% mutate(Segment = as.factor("Unknown"))
+
+# Creating Unknown User Dataframe
+df_unknown <- df_unknown[2,c(4,5,11:14)]
+
+df_unknown <- df_unknown %>% rename(Sessions = V4,
+                      BounceRate = V5,
+                      Revenue = V11,
+                      Transactions = V12,
+                      Users = V13,
+                      New_Users = V14)
+
+df_unknown <- df_unknown %>% mutate(Segment = as.factor("Unknown"))
+
+
+df_unknown <- df_unknown %>% relocate(any_of(c("Segment",
+                                               "Users", 
+                                               "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+df_unknown$Users <- as.numeric(gsub(",","", df_unknown$Users))
+df_unknown$Sessions <- as.numeric(gsub(",","",df_unknown$Sessions))
+df_unknown$Revenue <- as.numeric(gsub("[\\$,]","",df_unknown$Revenue))
+df_unknown$New_Users <- as.numeric(gsub(",","",df_unknown$New_Users))
+df_unknown$Transactions <- as.numeric(gsub(",","",df_unknown$Transactions))
+
+
+
+# Fixing bounce rate
+df_unknown$BounceRate <- as.numeric(gsub("[\\%, \\.]","",df_unknown$BounceRate))
+df_unknown <- df_unknown %>% mutate(BounceRate = BounceRate/10000)
+
+
+unknown_dates
+df_unknown
+
+
+# Importing & Cleaning '18-34' Year Old Data
+df_18_34 <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Audience 18-34.csv", skip = 6, head = FALSE, sep = ",")
+
+
+# Creating 18-34 User Dates
+young_dates <- df_18_34[c(16:283),c(1,3,4)]
+
+young_dates <- young_dates %>% rename(Date = V1,
+                         Segment = V3,
+                         Users = V4)
+
+young_dates$Users <- as.numeric(gsub(",","", young_dates$Users)) 
+
+young_dates$Date <- as_date(mdy(young_dates$Date))
+
+young_dates$Segment <- as.factor(young_dates$Segment)
+
+
+
+
+
+
+# Creating 18-34 User Dataframe
+df_18_34 <- df_18_34[c(2:5),c(3,6,7,13:16)]
+
+
+
+df_18_34 <- df_18_34 %>% rename(Segment = V3,
+                      Sessions = V6,
+                      BounceRate = V7,
+                      Transactions = V13,
+                      Revenue = V14,
+                      Users = V15,
+                      New_Users = V16)
+
+
+df_18_34 <- df_18_34 %>% relocate(any_of(c("Segment", 
+                                           "Users", 
+                                           "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+df_18_34$Users <- as.numeric(gsub(",","", df_18_34$Users))
+df_18_34$Sessions <- as.numeric(gsub(",","",df_18_34$Sessions))
+df_18_34$Revenue <- as.numeric(gsub("[\\$,]","",df_18_34$Revenue))
+df_18_34$New_Users <- as.numeric(gsub(",","",df_18_34$New_Users))
+df_18_34$Transactions <- as.numeric(gsub(",","",df_18_34$Transactions))
+df_18_34$Segment <- as.factor(df_18_34$Segment)
+
+
+
+# Fixing bounce rate
+df_18_34$BounceRate <- as.numeric(gsub("[\\%, \\.]","",df_18_34$BounceRate))
+df_18_34 <- df_18_34 %>% mutate(BounceRate = BounceRate/10000)
+
+
+young_dates
+df_18_34
+
+
+# Importing & Cleaning '35-54' Year Old Data
+df_35_54 <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Audience 35-54.csv", skip = 6, head = FALSE, sep = ",")
+
+
+# Creating 35-54 User Dates
+middle_dates <- df_35_54[c(16:283),c(1,3,4)]
+
+middle_dates <- middle_dates %>% rename(Date = V1,
+                         Segment = V3,
+                         Users = V4)
+
+middle_dates$Users <- as.numeric(gsub(",","", middle_dates$Users)) 
+
+middle_dates$Date <- as_date(mdy(middle_dates$Date))
+
+middle_dates$Segment <- as.factor(middle_dates$Segment)
+
+
+
+# Creating 35-54 User Dataframe
+df_35_54 <- df_35_54[c(2:5),c(3,6,7,13:16)]
+
+
+
+df_35_54 <- df_35_54 %>% rename(Segment = V3,
+                      Sessions = V6,
+                      BounceRate = V7,
+                      Revenue = V13,
+                      Transactions = V14,
+                      Users = V15,
+                      New_Users = V16)
+
+
+df_35_54 <- df_35_54 %>% relocate(any_of(c("Segment", 
+                                           "Users", 
+                                           "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+df_35_54$Users <- as.numeric(gsub(",","", df_35_54$Users))
+df_35_54$Sessions <- as.numeric(gsub(",","",df_35_54$Sessions))
+df_35_54$Revenue <- as.numeric(gsub("[\\$,]","",df_35_54$Revenue))
+df_35_54$New_Users <- as.numeric(gsub(",","",df_35_54$New_Users))
+df_35_54$Transactions <- as.numeric(gsub(",","",df_35_54$Transactions))
+df_35_54$Segment <- as.factor(df_35_54$Segment)
+
+
+
+# Fixing bounce rate
+df_35_54$BounceRate <- as.numeric(gsub("[\\%, \\.]","",df_35_54$BounceRate))
+df_35_54 <- df_35_54 %>% mutate(BounceRate = BounceRate/10000)
+
+
+middle_dates
+df_35_54
+
+
+# Importing & Cleaning '55+' Year Old Data
+df_55_100 <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Audience 55-100.csv", skip = 6, head = FALSE, sep = ",")
+
+
+# Creating 55+ User Dates
+older_dates <- df_55_100[c(16:283),c(1,3,4)]
+
+older_dates <- older_dates %>% rename(Date = V1,
+                         Segment = V3,
+                         Users = V4)
+
+older_dates$Users <- as.numeric(gsub(",","", older_dates$Users)) 
+
+older_dates$Date <- as_date(mdy(older_dates$Date))
+
+older_dates$Segment <- as.factor(older_dates$Segment)
+
+
+
+# Creating 55+ User Dataframe
+df_55_100 <- df_55_100[c(2:5),c(3,6,7,13:16)]
+
+
+
+df_55_100 <- df_55_100 %>% rename(Segment = V3,
+                      Sessions = V6,
+                      BounceRate = V7,
+                      Revenue = V13,
+                      Transactions = V14,
+                      Users = V15,
+                      New_Users = V16)
+
+
+df_55_100 <- df_55_100 %>% relocate(any_of(c("Segment", 
+                                           "Users", 
+                                           "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+df_55_100$Users <- as.numeric(gsub(",","", df_55_100$Users))
+df_55_100$Sessions <- as.numeric(gsub(",","",df_55_100$Sessions))
+df_55_100$Revenue <- as.numeric(gsub("[\\$,]","",df_55_100$Revenue))
+df_55_100$New_Users <- as.numeric(gsub(",","",df_55_100$New_Users))
+df_55_100$Transactions <- as.numeric(gsub(",","",df_55_100$Transactions))
+df_55_100$Segment <- as.factor(df_55_100$Segment)
+
+
+
+# Fixing bounce rate
+df_55_100$BounceRate <- as.numeric(gsub("[\\%, \\.]","",df_55_100$BounceRate))
+df_55_100 <- df_55_100 %>% mutate(BounceRate = BounceRate/10000)
+
+older_dates
+df_55_100
+
+
+
+## Combining the Age datasets
+# Creating df_age of all the age groups
+df_age <- rbind(df_unknown, df_18_34, df_35_54, df_55_100)
+
+age_dates <- rbind(unknown_dates, young_dates, middle_dates, older_dates)
+
+
+
+# Creating Tsibble
+age_dates <- age_dates %>% 
+    mutate(Day = as_date(Date)) %>%
+    as_tsibble(index = Day,
+               key = Segment) 
+
+
+
+age_dates <- age_dates %>% select(-Date)
+
+
+
+
+
+df_age$Transactions[df_age$Segment == "Male 65+"] <- 0
+df_age$Transactions[df_age$Segment == "Male 55-64"] <- 1
+
+df_age$Revenue[df_age$Segment == "Male 65+"] <- 0
+df_age$Revenue[df_age$Segment == "Male 55-64"] <- 25.96
+
+age_dates
+age_dates %>% autoplot()
+
+# User Location Import and Cleaning
+user_location <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master Location.csv", skip = 7, head = FALSE, sep = ",")
+
+
+user_location <- user_location[,c(1,3,4,5,6,7,10,11)]
+
+user_location <- user_location[c(1:200),]
+
+
+user_location <- user_location %>% rename(City = V1,
+                         Segment = V3,
+                         Users = V4,
+                         New_Users = V5,
+                         Sessions = V6,
+                         BounceRate = V7,
+                         Transactions = V10,
+                         Revenue = V11)
+
+
+# Cleaning
+user_location$Segment <- as.factor(user_location$Segment)
+user_location$Users <- as.numeric(gsub(",","", user_location$Users))
+user_location$New_Users <- as.numeric(gsub(",","", user_location$New_Users))
+user_location$Revenue <- as.numeric(gsub("[\\$,]","",user_location$Revenue))
+user_location$Sessions <- as.numeric(gsub(",","",user_location$Sessions))
+user_location$BounceRate <- as.numeric(gsub("[\\%, \\.]","",user_location$BounceRate))
+
+# Has to be a Character to change before turning it into factor
+user_location$City[user_location$City == "(not set)"] <- "Not Set"
+user_location$City <- as.factor(user_location$City)
+
+# Fixing bounce rate
+user_location <- user_location %>% mutate(BounceRate = BounceRate/10000)
+
+
+
+user_location %>% filter(Segment == "All Users" & Transactions >=1) %>%
+  ggplot(., aes(City, Users, size = Transactions, color = Transactions)) +
+  geom_point() + coord_flip()
+
+
+
+# User Gender Import and Cleaning
+user_gender <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master Gender.csv", skip = 5, head = FALSE, sep = ",")
+
+
+user_gender <- user_gender[c(2,3),c(1:5,8,9)]
+
+user_gender <- user_gender %>% rename(Gender = V1,
+                                      Sessions = V4,
+                                      BounceRate = V5,
+                                      Revenue = V9,
+                                      Transactions = V8,
+                                      Users = V2,
+                                      New_Users = V3)
+
+head(user_gender)
+
+user_gender <- user_gender %>% relocate(any_of(c("Gender", 
+                                           "Users", 
+                                           "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+user_gender$Users <- as.numeric(gsub(",","", user_gender$Users))
+user_gender$Sessions <- as.numeric(gsub(",","",user_gender$Sessions))
+user_gender$Revenue <- as.numeric(gsub("[\\$,]","",user_gender$Revenue))
+user_gender$New_Users <- as.numeric(gsub(",","",user_gender$New_Users))
+user_gender$Transactions <- as.numeric(gsub(",","",user_gender$Transactions))
+user_gender$Gender[user_gender$Gender == "female"] <- "Female"
+user_gender$Gender[user_gender$Gender == "male"] <- "Male"
+user_gender$Gender <- as.factor(user_gender$Gender)
+
+
+
+# Fixing bounce rate
+user_gender$BounceRate <- as.numeric(gsub("[\\%, \\.]","",user_gender$BounceRate))
+user_gender <- user_gender %>% mutate(BounceRate = BounceRate/10000)
+
+
+# User Type Import and Cleaning
+user_type <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master New v Return.csv", skip = 5, head = FALSE, sep = ",")
+
+
+
+# Creating 55+ User Dataframe
+user_type <- user_type[c(2,3),c(1:5, 8,9)]
+
+user_type
+
+user_type <- user_type %>% rename(User_Type = V1,
+                      Sessions = V4,
+                      BounceRate = V5,
+                      Revenue = V9,
+                      Transactions = V8,
+                      Users = V2,
+                      New_Users = V3)
+
+
+user_type <- user_type %>% relocate(any_of(c("User_Type", 
+                                           "Users", 
+                                           "New_Users", 
+                                               "Sessions", 
+                                               "Transactions", 
+                                               "Revenue", 
+                                               "BounceRate")))
+
+user_type$Users <- as.numeric(gsub(",","", user_type$Users))
+user_type$Sessions <- as.numeric(gsub(",","",user_type$Sessions))
+user_type$Revenue <- as.numeric(gsub("[\\$,]","",user_type$Revenue))
+user_type$New_Users <- as.numeric(gsub(",","",user_type$New_Users))
+user_type$Transactions <- as.numeric(gsub(",","",user_type$Transactions))
+user_type$User_Type <- as.factor(user_type$User_Type)
+
+
+
+# Fixing bounce rate
+user_type$BounceRate <- as.numeric(gsub("[\\%, \\.]","",user_type$BounceRate))
+user_type <- user_type %>% mutate(BounceRate = BounceRate/10000)
+
+
+
+
+
+user_type
+
+
+# User interest Import and Cleaning
+user_interest <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master Interests.csv", skip = 7, head = FALSE, sep = ",")
+
+user_interest
+
+
+
+user_interest <- user_interest[,c(1:5,8,9)]
+
+user_interest <- user_interest[c(1:91),]
+
+
+user_interest <- user_interest %>% rename(Interest = V1,
+                         Users = V2,
+                         New_Users = V3,
+                         Sessions = V4,
+                         BounceRate = V5,
+                         Transactions = V8,
+                         Revenue = V9)
+
+user_interest$Users <- as.numeric(gsub(",","", user_interest$Users))
+user_interest$Sessions <- as.numeric(gsub(",","",user_interest$Sessions))
+user_interest$Revenue <- as.numeric(gsub("[\\$,]","",user_interest$Revenue))
+user_interest$New_Users <- as.numeric(gsub(",","",user_interest$New_Users))
+user_interest$Transactions <- as.numeric(gsub(",","",user_interest$Transactions))
+user_interest$Interest <- as.factor(user_interest$Interest)
+
+
+
+# Fixing bounce rate
+user_interest$BounceRate <- as.numeric(gsub("[\\%, \\.]","",user_interest$BounceRate))
+user_interest <- user_interest %>% mutate(BounceRate = BounceRate/10000)
+
+
+user_interest$Interest <- gsub("/"," ", user_interest$Interest)
+
+user_interest$Interest <- gsub("&","and", user_interest$Interest)
+
+user_interest
+
+
+# Want to combine groups togther like the code chunk belo
+
+# Separating into two dataframes, interest groups who purchased and didn't purchase
+int_purch <- user_interest %>% filter(Transactions > 0)
+
+int_nopurch <- user_interest %>% filter(Transactions == 0)
+
+int_purch
+# 56 purchasers groups
+
+int_nopurch
+# 35 non purchasing groups
+
+
+# important to know tho... 1 customer is not bound by 1 interest group, can be apart of multiple
+
+#For the no purchasers, I should find out word count (word map maybe?) of the most common words that relate to non-purchasers
+
+
+# int_nopurch common words
+int_nopurch
+
+
+# Add this to its own df in order to pull apart
+interest_char <- int_nopurch %>% select(Interest)
+
+
+interest_char <- interest_char %>% unnest_tokens(word, Interest) 
+
+
+interest_char <- interest_char %>% anti_join(stop_words)
+
+# Viewing the top 20 words
+
+head(interest_char %>% count(word, sort = TRUE), 20)
+
+
+
+# Channel Import and Cleaning
+user_channel <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Analytics Master Acquisition.csv", skip = 5, head = FALSE, sep = ",")
+
+
+
+user_channel <- user_channel[c(2:5),c(1:5,9,10)]
+
+user_channel <- user_channel %>% rename(Market_Channel = V1,
+                        Users = V2,
+                        New_Users = V3,
+                        Sessions = V4,
+                        BounceRate = V5,
+                        Transactions = V9,
+                        Revenue = V10)
+
+
+
+
+user_channel$Users <- as.numeric(gsub(",","", user_channel$Users))
+user_channel$New_Users <- as.numeric(gsub(",","", user_channel$New_Users))
+user_channel$Revenue <- as.numeric(gsub("[\\$,]","",user_channel$Revenue))
+user_channel$Sessions <- as.numeric(gsub(",","", user_channel$Sessions))
+user_channel$Transactions <- as.numeric(gsub(",","", user_channel$Transactions))
+user_channel$Market_Channel <- as.factor(user_channel$Market_Channel)
+
+
+# Fixing bounce rate
+user_channel$BounceRate <- as.numeric(gsub("[\\%, \\.]","",user_channel$BounceRate))
+user_channel <- user_channel %>% mutate(BounceRate = BounceRate/10000)
+
+user_channel
+
+# Double Checking
+user_location # City, Purch/All users, Users, Transaction, Revenue
+
+user_type # New v Returning, Users, Trans, Revenue
+
+user_gender # M v F, users, transactions, revenue
+
+age_dates # Dates associated w/ users, segment (age)
+
+df_age # Actual age groups (w/ unknown), Users, Transactions, Revenue
+
+user_date # Date associated w/ all users
+
+user_interest # All interest groups, users, transactions, revenue
+int_purch # Purchasers, users, transactions, revenue
+int_nopurch # Non-purchasers, users, transactions, revenue
+
+user_channel # Market channel, users, transactions, revenue
+
+
+# Ad User Location
+ad_user_location <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Ad pull/Analytics 1 Master View Location.csv", skip = 7, head = FALSE, sep = ",")
+
+ad_user_location <- ad_user_location[c(1:10),c(1:5,8,9)]
+
+
+
+
+ad_user_location <- ad_user_location %>% rename(City = V1,
+                         Users = V2,
+                         New_Users = V3,
+                         Sessions = V4,
+                         BounceRate = V5,
+                         Transactions = V8,
+                         Revenue = V9)
+
+
+# Cleaning
+ad_user_location$Users <- as.numeric(gsub(",","", ad_user_location$Users))
+ad_user_location$New_Users <- as.numeric(gsub(",","", ad_user_location$New_Users))
+ad_user_location$Revenue <- as.numeric(gsub("[\\$,]","",ad_user_location$Revenue))
+ad_user_location$Sessions <- as.numeric(gsub(",","",ad_user_location$Sessions))
+ad_user_location$BounceRate <- as.numeric(gsub("[\\%, \\.]","",ad_user_location$BounceRate))
+
+# Has to be a Character to change before turning it into factor
+ad_user_location$City[ad_user_location$City == "(not set)"] <- "Not Set"
+ad_user_location$City <- as.factor(ad_user_location$City)
+
+# Fixing bounce rate
+ad_user_location <- ad_user_location %>% mutate(BounceRate = BounceRate/10000)
+
+
+
+# Adding data from Wix
+ad_user_location$Transactions[ad_user_location$City == "Seattle" ] <- 9
+ad_user_location$Transactions[ad_user_location$City == "Not Set" ] <- 1
+ad_user_location$Transactions[ad_user_location$City == "Los Angeles" ] <- 1
+
+ad_user_location$Revenue[ad_user_location$City == "Seattle" ] <- 705.97
+ad_user_location$Revenue[ad_user_location$City == "Not Set" ] <- 38.74
+ad_user_location$Revenue[ad_user_location$City == "Los Angeles" ] <- 38.74
+
+ad_user_location
+
+# Advertising User Date Import & Clean
+ad_user_date <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Ad pull/Analytics 1 Master View Audience.csv", skip = 7, head = FALSE, sep = ",")
+
+ad_user_date
+
+
+ad_user_date <- ad_user_date %>% rename(Day = V1,
+                     Users = V2)
+
+ad_user_date <- ad_user_date[c(1:93),]
+
+
+
+ad_user_date$Users <- as.numeric(gsub(",","", ad_user_date$Users)) 
+ad_user_date$Day <- as_date(mdy(ad_user_date$Day))
+
+
+ad_user_date <- ad_user_date %>% 
+    as_tsibble(index = Day) 
+
+
+ad_user_date %>% autoplot()
+
+# Advertising User Channel Import & Clean
+ad_user_channel <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Ad pull/Analytics 1 Master View Acquisition.csv", skip = 5, head = FALSE, sep = ",")
+
+
+ad_user_channel
+
+ad_user_channel <- ad_user_channel[c(2:5),c(1:5,9,10)]
+
+ad_user_channel <- ad_user_channel %>% rename(Market_Channel = V1,
+                        Users = V2,
+                        New_Users = V3,
+                        Sessions = V4,
+                        BounceRate = V5,
+                        Transactions = V9,
+                        Revenue = V10)
+
+
+
+
+ad_user_channel$Users <- as.numeric(gsub(",","", ad_user_channel$Users))
+ad_user_channel$New_Users <- as.numeric(gsub(",","", ad_user_channel$New_Users))
+ad_user_channel$Revenue <- as.numeric(gsub("[\\$,]","",ad_user_channel$Revenue))
+ad_user_channel$Sessions <- as.numeric(gsub(",","", ad_user_channel$Sessions))
+ad_user_channel$Transactions <- as.numeric(gsub(",","", ad_user_channel$Transactions))
+ad_user_channel$Market_Channel <- as.factor(ad_user_channel$Market_Channel)
+
+
+# Fixing bounce rate
+ad_user_channel$BounceRate <- as.numeric(gsub("[\\%, \\.]","",ad_user_channel$BounceRate))
+ad_user_channel <- ad_user_channel %>% mutate(BounceRate = BounceRate/10000)
+
+ad_user_channel
+
+# Advertising User Type Import & Clean
+ad_user_type <- read.csv("/Users/Rose/Desktop/Masters In Data Science/Capstone/LanderL Datasets/Ad pull/Analytics 1 Master New vs Returning.csv", skip = 5, head = FALSE, sep = ",")
+
+
+
+
+ad_user_type <- ad_user_type[c(2,3),c(1:5, 8,9)]
+
+
+
+ad_user_type <- ad_user_type %>% rename(User_Type = V1,
+                      Sessions = V4,
+                      BounceRate = V5,
+                      Revenue = V9,
+                      Transactions = V8,
+                      Users = V2,
+                      New_Users = V3)
+
+
+
+
+ad_user_type$Users <- as.numeric(gsub(",","", ad_user_type$Users))
+ad_user_type$Sessions <- as.numeric(gsub(",","",ad_user_type$Sessions))
+ad_user_type$Revenue <- as.numeric(gsub("[\\$,]","",ad_user_type$Revenue))
+ad_user_type$New_Users <- as.numeric(gsub(",","",ad_user_type$New_Users))
+ad_user_type$Transactions <- as.numeric(gsub(",","",ad_user_type$Transactions))
+ad_user_type$User_Type <- as.factor(ad_user_type$User_Type)
+
+
+
+# Fixing bounce rate
+ad_user_type$BounceRate <- as.numeric(gsub("[\\%, \\.]","",ad_user_type$BounceRate))
+ad_user_type <- ad_user_type %>% mutate(BounceRate = BounceRate/10000)
+
+
+# Adding data from Wix
+ad_user_type$Transactions[ad_user_type$User_Type == "New Visitor" ] <- 10
+ad_user_type$Transactions[ad_user_type$User_Type == "Returning Visitor" ] <- 1
+
+ad_user_type$Revenue[ad_user_type$User_Type == "New Visitor" ] <- 740.45
+ad_user_type$Revenue[ad_user_type$User_Type == "Returning Visitor" ] <- 43.00
+
+ad_user_type
+
+# Advertising Gender Import & Clean
+
+ad_user_gender <- data_frame(Gender = as.factor(c("Male","Female")),
+                             Transactions = as.numeric(c(6,5)),
+                             Revenue = as.numeric(c(427.33,356.11))
+                             )
+
+
+ad_user_gender
+
+
+
+
+
+
+# Double Check
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# USER TYPE
+
+
+
+
+
+
+
+
+
+#subplot(ad_user_date_plotly, post_ad_plotly)
+
+
+```
+
+I am working with a dog-leash startup that needs assistance with their analytics. They have Google Analytics & Wix as platforms to measure e-commerce & purchase data, but they don't have time to conduct an analysis on the data they've collected. The start-up lacks manpower, so they need extra hands on their analysis. Additionally, the organization has spent money on advertising campaigns in the past, but are uncertain if it they are gaining conversions through their efforts. This problem is important to solve for the organization because they are spending thousands of dollars on advertising, and are unable to determine if it is helping. They need help identifying potential target segments in order to conduct an A/B test. This A/B test will help make website changes, which will mitigate risk for the organization while saving them money.
+
+# Issue Section
+```{r, echo=FALSE, warning=FALSE}
+# All dates
+all_plotly <- all_dates %>% ggplot(.,aes(Day,Users)) + geom_line() + ylim(0,1200) + labs(x = "Date [D]", y = "Website Visitors")
+
+ggplotly(all_plotly, height = 400, width = 600) %>% layout(title = list(
+  text = paste0('<span style="font-size: 15px;">',
+    '<b>Website Visitor Data for All Dates<b><sup>')))
+
+```
+
+I am looking at two sessions specifically because the organization does not have data for other time periods. The organization has had several months of downtime due to website maintenance and product upgrades. 
+
+## Analysis Conducted on Two Different Time-Slots:
+
+```{r, echo=FALSE, warning=FALSE}
+# Ad user date
+# USER DATE
+
+ad_user_date_plotly <- ad_user_date %>% ggplot(., aes(Day,Users)) + geom_line() + labs(x = "Date [D]", y = "Website Visitors", title = "1. Advertising Session (Nov 25, 2018 - Feb 25, 2019)") + theme(plot.title = element_text(face = "bold", size = 14),legend.position = "none")
+
+ggplotly(ad_user_date_plotly, height = 400, width = 600)
+
+# Post Ad user date
+post_ad_plotly <- user_date %>% filter(Segment == "All Users") %>% ggplot(., aes(Day,User)) +geom_line() + labs(x = "Date [D]", y = "Website Visitors", title = "2. Post-advertising (Apr 23, 2020 - Jun 28, 2020)") + theme(plot.title = element_text(face = "bold", size = 14)) + ylim(0,1000)
+
+ggplotly(post_ad_plotly, height = 400, width = 600)
+
+
+```
+
+
+
+The post-advertising dates were chosen because the organization made changes to the e-commerce platform. To assist with website maintenance, I conducted descriptive analytics for the advertising & post advertising dates to discover customer segment groups to develop an A/B test for their website. Research questions to guide my analysis include:
+
+**1. How does the advertising period revenue, volume and demographic data compare to the post advertising period?**
+
+**2. Which customer group should the organization conduct an A/B test for?**
+
+The data I analyzed to answer these questions are based on demographic information (gender, location, age), interests, purchase volume, market channel grouping, and user type. The organization has ambiguous & missing data for the advertising dates, so I conducted the analysis based on the information provided. 
+
+
+## Potential Issues in the Analysis:
+
+1. For the 'Advertising Dates', there is ambiguous and missing data in major areas such as: Purchase Volume (Transactions), age and gender information that could pose as a problem to the reliability of this analysis.
+
+2. Possible seasonality within the advertising dates as it is in Q4 (retail seasonality).
+3. The analyses may not be generalizable given the date comparison (not the same YOY) and potential COVID-19 impact on sales.
+
+These factors combined will make it difficult to generalize year over year, but still provide a detailed analysis that will be useful for the organization.
+
+
+# Methodology
+
+This analysis will help the organization better understand their customer base, highlighting the differences since the organization made changes to its e-commerce platform.
+
++ I have developed a descriptive analysis of the 'Advertising' and 'Post-Advertising' groups to determine potential customer segments. Comparing them to answer the question: How does the advertising period revenue, volume and demographic data compare to the post advertising period?
+
++ Once I have answered this, I will use this analysis to determine which customer group(s) the organization should conduct an A/B test on. 
+
++ After this is completed, I will write a proposal for a future A/B test that I will help conduct for the organization. This proposal will address the following: changes to the website, how I came to determine these changes, how success will be measured. 
+
+**I will continue my work with this organization passed the semester because the organization has taken down it's website to upgrading their product.**
+
+
+
+# Variables of Interest
+
+## Revenue
+Revenue is one of the key metric that I will be analyzing and comparing between segment groups. I will look at the relationship between revenue and location, age, gender, user type, interests, and channel grouping. Unfortunately, there was no 'Advertising' data to compare this to.
+
+## Purchase Volume
+```{r, echo=FALSE,warning=FALSE}
+made_purch_plotly <- user_date %>% filter(Segment == "Made a Purchase") %>% ggplot(., aes(Day,User)) + geom_line() + labs(x = "Date [D]", y = "Purchase Volume")
+
+ggplotly(made_purch_plotly, height = 400, width = 600) %>% layout(title = list(
+  text = paste0('<span style="font-size: 15px;">',
+    '<b>Post-Advertisement Purchase Volume<b><sup>')))
+
+
+```
+- This plot highlights the 'Post-Advertising' purchase volume of customers, showing that there were high spikes in volume throughout the period. Although there isn't similar data for the 'Advertisement' dates, a useful metric to know is there were 11 purchases.
+
+
+
+
+## Location
+
+The location data is important in the analysis of determining target groups. The data consist of the highest user cities and has revenue & transaction data associated with each city.
+
+```{r, echo=FALSE,warning=FALSE}
+## Ad user Location
+ad_loc_plotly <- ad_user_location %>% 
+  ggplot(., aes(Transactions, Sessions, color = City, label = Revenue)) +
+  geom_jitter() + 
+  coord_flip() + 
+  guides(color = FALSE) +
+  labs(x = "Purchase Volume", y="Website Sessions") + theme(plot.title = element_text(size = 1))
+
+
+ggplotly(ad_loc_plotly) %>% layout(title = list(
+  text = paste0('<span style="font-size: 15px;">',
+    '<b>Advertisement Purchaser Location<b><sup>', 
+                '<br><span style="font-size: 10px;">',
+                '<i>Double Click Legend to Choose City<i>', 
+                '</sup>')))
+
+```
+- For the 'Advertisement' dates there is limited data on this period. Several of these cities had 200+ visits to the website yet cities engaged in a purchase of the product: Seattle, Los Angeles, & Not Set. But Seattle had the most traction with 9 purchases.  
+
+
+
+```{r, echo=FALSE,warning=FALSE}
+
+# Location VOI
+loc_plotly <- user_location %>% 
+  filter(Segment == "All Users") %>%
+  ggplot(., aes(Transactions, Sessions, color = City, label = Revenue)) +
+  geom_jitter() + 
+  coord_flip() + 
+  guides(color = FALSE) +
+  labs(x = "Purchase Volume", y="Website Sessions")
+
+ggplotly(loc_plotly) %>% layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement Purchaser Location<b>',
+                                                           '<br><span style="font-size: 10px;">',
+                                                          '<i>Double Click Legend to Choose City<i>', '</sup>')))
+
+
+
+```
+- The 'Post-Advertisement' dates had overall higher purchase behavior including purchases from:
+  + Austin & Houston, Texas
+  + Boston & Fall River, Massachusetts
+  + Seattle & Renton, Washington
+- These cities all have high session to purchase rates
+
+
+	
+	
+## Interests
+The Interest data is associated with specific users, some examples of the interest features include value shoppers, movie lovers, business travelers, etc. This data also includes transactions, revenue and total number of sessions. Unfortunately there is no interest data for the 'Advertisement' dates.
+
+```{r, echo=FALSE, warning=FALSE}
+# Interest VOI
+int_plotly <- int_purch %>% 
+  ggplot(., aes(Sessions, Revenue, color = Interest, label = Transactions)) +
+  geom_point(aes(text = paste(Interest))) + 
+  theme(legend.position = "none") + labs(x = "Website Sessions", y = "Revenue ($)")
+
+ggplotly(int_plotly, tooltip = c("text", "y", "x", "label")) %>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement Interest Groups<b>')))
+```
+For the 'Post-Advertising' data there are several purchasers that have different interests. One thing to note about this data is that 1 purchaser could have multiple interests. Common themes among these interest groups include:
+   + People who enjoy adventuring, whether it is to seek thrills, travel, going to live events
+   + People who enjoy sports, fitness and health
+   + People who enjoy going out but not too far from home
+   + People who love to go shopping
+
+
+
+## Age
+
+The age data consist of different age groups (i.e 18-24, 25-34, 35-44, 45-54, 55-64, 65+) and the gender associated with that age. There is also "unknown" where the data collected isn't associated with a gender or age. This data has information on the number of users in that group, transactions & revenue. There is no 'Advertising' dates associated with the age data, but there is gender data will be discussed later.
+
+
+```{r, echo=FALSE, warning=FALSE}
+
+# Age VOI & Age Dates VOI
+age_dates_plotly <- age_dates %>% filter(Segment != "Unknown") %>%
+  ggplot(., aes(Day,Users, color = Segment)) + 
+  geom_line() + 
+  guides(color = FALSE) + 
+  labs(x = "Date [D]", y = "Website Visitors")
+
+ggplotly(age_dates_plotly) %>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement: Gender & Age Group Visitors<b>','<br><span style="font-size: 10px;">',
+                                                          '<i>Double Click Legend to Choose Group<i>', '</sup>')))
+```
+- There are large spikes in each group in the middle of May. There are then no visitors at the end up May & beginning of June. The largest groups are Female's 25-34 & 35-44 as well as Men 25-34.
+
+```{r, echo=FALSE, warning=FALSE}
+
+
+ag_ggplotly <- df_age %>% filter(Segment != "Unknown") %>%
+  ggplot(., aes(Users, Transactions, color = Segment)) + 
+  geom_point(aes(text = paste("Revenue:", Revenue))) +
+  guides(color = FALSE) + labs(x = "Website Visitors", y = "Purchase Volume")
+
+
+ggplotly(ag_ggplotly, tooltip = c("text", "y", "x", "Segment")) %>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement: Gender & Age Group Purchase Volumes<b>','<br><span style="font-size: 10px;">',
+                                                          '<i>Double Click Legend to Choose Group<i>', '</sup>')))
+```
+- Women age 18-34, have a combine 10 transactions. Men ages 18-34 have a combine 6 transactions. This will help determine which groups to target in an A/B test.
+
+
+
+## Gender
+The gender data consist of purchases, visits, & revenue for each gender. For the 'Post-Advertising' period, this does not include the 42 other purchases by the "Unknown" purchaser. This well help determine which group to A/B test for.
+
+```{r, echo=FALSE, warning=FALSE}
+
+# AD GENDER
+ad_gend_plotly <- ad_user_gender %>% ggplot(., aes(Gender,Transactions, 
+                                   fill = Gender, 
+                                   text = paste("Revenue:", Revenue))) +
+  geom_bar(stat = "identity", 
+           size = .3) +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none",
+        aspect.ratio = 7/5) +
+  labs(y = "Purchase Volume") + ylim(0,18)
+
+
+#ggplotly(ad_gend_plotly, tooltip = c("y", "label", "text"), height = 400, width = 500) %>% 
+#  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Advertisement: Gender Website Purchasers<b>')))
+
+
+
+
+# Gender VOI
+gend_plotly <- user_gender %>% ggplot(., aes(Gender,Transactions, 
+                                   fill = Gender, 
+                                   label = Users, 
+                                   text = paste("Revenue:", Revenue))) +
+  geom_bar(stat = "identity", 
+           size = .3) +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none",
+        aspect.ratio = 7/5) + ylim(0,18) + labs(y = "Purchase Volume")
+
+
+#ggplotly(gend_plotly, tooltip = c("y", "label", "text")) %>% 
+#  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement: Gender Website Visitors<b>')))
+
+subplot(ad_gend_plotly, gend_plotly, shareY = TRUE)%>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Gender: Purchase Volume Comparison<b>','<br><span style="font-size: 10px;">',
+                                                          '<i>Advertisement                                         Post Advertisement   <i>', '</sup>')))
+```
+- No surprise, there is a overall larger purchase volume with Women (21) to Men (15). It is interesting that during the advertising period there are more Men purchasing, but it is by a very slight advantage.
+
+	
+
+## Channel Grouping
+The Market Channel data consists of the different channels users took to reach the main website including organic search, direct, referral, and social. This data also has information on transactions, bounce rate, revenue, and amount of website visitors. There is no transaction or revenue data associated with the 'Advertising' dates.
+
+```{r, echo=FALSE, warning=FALSE}
+# USER CHANNEL
+
+ad_channel_plotly <- ad_user_channel %>% ggplot(., aes(Market_Channel, Sessions, fill = Market_Channel, text = paste("Transactions:", Transactions, "<br>", "Bounce Rate:", BounceRate))) + 
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none") + labs(x = "Market Channel", y = "Website Visitors") +ylim(0,13000)
+
+# Ad Channel
+#ggplotly(ad_channel_plotly, height = 400, width = 400, tooltip = c("text","y")) %>% 
+ # layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Advertisement: Market Channel Visitor Rate<b>')))
+
+
+channel_plotly <- user_channel %>% ggplot(., aes(Market_Channel, Sessions, fill = Market_Channel, text = paste("Transactions:", Transactions, "<br>", "Bounce Rate:", BounceRate))) + 
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none") + labs(x = "Market Channel", y = "Website Visitors") +ylim(0,13000)
+
+
+#ggplotly(channel_plotly, height = 400, width = 400, tooltip = c("text","y")) %>% 
+#  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Advertisement: Market Channel Visitor Rate<b>')))
+
+
+subplot(ad_channel_plotly, channel_plotly, shareY = TRUE) %>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Market Channel: Website Visitor Comparison<b>','<br><span style="font-size: 10px;">',
+                                                          '<i>Advertisement                                             Post Advertisement   <i>', '</sup>')))
+```
+- For the 'Advertising' period, there are ~ 13,000 visitors in Social compared to the next highest being direct, this makes sense because the organization used social media platforms to advertise. You can see by hovering over these that Social had the highest bounce rate and referral had the lowest.
+- For the 'Post-Advertising' period, all channels were behind Social from 'Advertising', but Direct and Social had the highest visitors. 
+
+```{r, echo=FALSE, warning=FALSE}
+
+
+# Channel VOI
+channel_purch_plotly <- user_channel %>% ggplot(., aes(Market_Channel, Transactions, fill = Market_Channel, text = paste("Revenue:", Revenue, "<br>", "Bounce Rate:", BounceRate))) + 
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none") + labs(x = "Market Channel", y = "Purchase Volume")
+
+ggplotly(channel_purch_plotly, tooltip = c("text","y"), height = 500, width = 500,) %>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>Post-Advertisement: Market Channel Purchase Volume<b>')))
+
+
+```
+- Interestingly unlike the plot before, for 'Post-Advertising', Referral, Direct, and Organic Search had high transaction rates while Social had the lowest. As I mentioned previously, 'Advertising' had no transactional data associated with Market Channel.
+
+
+## User Type
+The User Type data includes both new & existing visitors to the website. This data is associated with revenue, and transactional information.
+
+```{r, echo=FALSE, warning=FALSE}
+
+ad_user_type_plotly <- ad_user_type %>% ggplot(., aes(User_Type, 
+                                           Transactions, 
+                                           fill = User_Type, 
+                                           text = paste("Revenue:", Revenue))) + 
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none") + ylim(0,45) + labs(y="Purchase Volume")
+
+# Ad User Type
+#ggplotly(ad_user_type_plotly, height = 400, width = 400, tooltip = c("text","y"))
+
+
+# User Type VOI
+type_plotly <- user_type %>% ggplot(., aes(User_Type, 
+                                           Transactions, 
+                                           fill = User_Type, 
+                                           text = paste("Revenue:", Revenue))) + 
+  geom_bar(stat = "identity") +
+  scale_fill_brewer(palette = "Set3") +
+  theme(legend.position = "none") + ylim(0,45) + labs(y="Purchase Volume")
+
+
+#ggplotly(type_plotly, height = 400, width = 400, tooltip = c("text","y"))
+
+
+subplot(ad_user_type_plotly, type_plotly, shareY = TRUE)%>% 
+  layout(title = list(text = paste0('<span style="font-size: 15px;">', '<b>User Type: Purchase Volume Comparison<b>','<br><span style="font-size: 10px;">',
+                                                          '<i>Advertisement                                         Post Advertisement   <i>', '</sup>')))
+```
+- Common with other plots, there are more transactions with the 'Post-Advertisement' data. The 'Advertisement' brought in New Visitor to the site where they purchased 10 times compared to Returning Visitors. There is a mix of New and Returning Visitors during the 'Post-Advertisement' data. It is possible that some of these returning users could be from the 'Advertising' period.
+
+
+# Conclusion
+
+## How does the advertising period revenue, volume and demographic data compare to the post advertising period?
+
+
+```{r, echo=FALSE, warning=FALSE}
+table_for_conc <- data.frame("Group" = c("Advertising", "Post-Advertising"), 
+           "Revenue" = c("$783.40","$1827.36"),
+           "Transactions" = c(11, 67),
+           "Sessions" = c("14,083","11,795"),
+           "Male Purchasers" = c(6,9),
+           "Female Purchasers" = c(5,16))
+
+table_for_conc <- table_for_conc %>% rename(`Male Purchasers` = "Male.Purchasers",
+                          `Female Purchasers` = "Female.Purchasers")
+
+
+kbl(table_for_conc) %>% kable_styling(bootstrap_options = c("striped", "hover", "responsive"))
+
+
+```
+
+
+
+
+
+
+## Which customer group should the organization conduct an A/B test for?
+
+- The 'Post Advertising' dates have a higher session to transaction rate than the 'Advertising' dates. Although we saw there were more overall purchases by women specifically the 2 groups of Women 25-34 and 18-24, they also have the largest amount of sessions. Males 18-24 and 25-34 have a better rate to purchase. As I mentioned earlier in the analysis, in the 'Post Advertising' group, there were members from Texas, Massachusetts and Washington. They also had very high rates of purchase per session. As I mentioned before the interest groups: People who enjoy adventuring, whether it is to seek thrills, travel, going to live events, eople who enjoy sports, fitness and health, people who enjoy going out but not too far from home, people who love to go shopping.
+
+
+
+- I suggest conducting 2 A/B tests 1 for the Women of those groups and 1 for the Men of those groups. Additionally there can be an A/B test that has both of these groups included. These groups would include pictures of individuals doing activities similar to the interest section from the last paragraph.
+
+
+
+
+
+
+
+
+
+
+
